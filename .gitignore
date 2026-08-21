@@ -6,3 +6,5 @@
 Tasks/
 
 .env
+
+.ruff_cache
