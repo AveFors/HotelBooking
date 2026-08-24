@@ -1,12 +1,23 @@
 from pydantic import BaseModel, ConfigDict
 
 
-class HotelCreate(BaseModel):
+class HotelBase(BaseModel):
     title: str
     location: str
 
 
-class HotelResponse(HotelCreate):
-    id: int
+class HotelCreate(HotelBase):
+    pass
 
-    model_config = ConfigDict(from_attributes=True)
+
+class HotelUpdatePUT(HotelBase):
+    pass
+
+
+class HotelUpdatePatch(HotelBase):
+    title: str | None = None
+    location: str | None = None
+
+
+class HotelResponse(HotelBase):
+    id: int

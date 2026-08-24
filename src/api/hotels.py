@@ -3,14 +3,19 @@ from typing import Annotated
 from fastapi import (
     APIRouter,
     Body,
+    HTTPException,
     Query,
 )
-from sqlalchemy import Result, insert, select
 
+from repositories.hotels import HotelsRepository
 from src.api.dependencies import Pagination
 from src.database import async_session_maker
-from src.models.hotels import HotelsOrm
-from src.schemas.hotels import HotelCreate, HotelResponse
+from src.schemas.hotels import (
+    HotelCreate,
+    HotelResponse,
+    HotelUpdatePUT,
+    HotelUpdatePatch,
+)
 
 router = APIRouter(prefix="/hotels", tags=["Отели"])
 
@@ -20,29 +25,12 @@ async def get_hotels(
     pagination: Annotated[Pagination, Query()],
     substring: Annotated[str | None, Query(min_length=2)] = None,
 ) -> list[HotelResponse]:
-
-    _limit = pagination.per_page
-    _offset = pagination.per_page * (pagination.page - 1)
-
-    query = select(HotelsOrm)
-
-    if substring:
-        query = (
-            query.filter(
-                (HotelsOrm.title.ilike(f"%{substring}%"))
-                | (HotelsOrm.location.ilike(f"%{substring}%"))
-            )
-            .order_by(HotelsOrm.id)
-            .limit(_limit)
-            .offset(_offset)
-        )
-    else:
-        query = query.order_by(HotelsOrm.id).limit(_limit).offset(_offset)
-
     async with async_session_maker() as session:
-        result: Result = await session.execute(query)
-        hotels = result.scalars().all()
-        return hotels
+        return await HotelsRepository(session).get_all(
+            substring=substring,
+            limit=pagination.per_page,
+            offset=pagination.per_page * (pagination.page - 1),
+        )
 
 
 @router.get("/{hotel_id}", summary="Получить отель по айди")
@@ -50,7 +38,15 @@ async def get_hotel_by_id(
     hotel_id: int,
 ) -> HotelResponse:
     async with async_session_maker() as session:
-        return await session.get(HotelsOrm, hotel_id)
+        hotel = await HotelsRepository(session).get_one_or_none(id=hotel_id)
+
+        if hotel is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Такого отеля не существует.",
+            )
+
+        return hotel
 
 
 @router.post(
@@ -80,9 +76,40 @@ async def create_hotel(
             }
         ),
     ],
-):
+) -> dict:
     async with async_session_maker() as session:
-        stmt = insert(HotelsOrm).values(**hotel.model_dump())
-        await session.execute(stmt)
+        hotel = await HotelsRepository(session).add(schema=hotel)
         await session.commit()
-    return {"status": "OK"}
+        return {"status": "OK", "data": hotel}
+
+
+@router.put("/{hotel_id}", summary="Изменение отеля(PUT).")
+async def update_put_hotel(hotel_id: int, hotel: HotelUpdatePUT) -> dict:
+    async with async_session_maker() as session:
+        hotel = await HotelsRepository(session).edit(
+            schema=hotel,
+            id=hotel_id,
+        )
+        await session.commit()
+        return {"status": "OK", "data": hotel}
+
+
+@router.patch("/{hotel_id}", summary="Изменения отеля(PATCH)")
+async def update_patch_hotel(hotel_id: int, hotel: HotelUpdatePatch) -> dict:
+    async with async_session_maker() as session:
+        hotel = await HotelsRepository(session).edit(
+            schema=hotel,
+            id=hotel_id,
+            exclude_none=True,
+            exclude_unset=True,
+        )
+        await session.commit()
+        return {"status": "OK", "data": hotel}
+
+
+@router.delete("/{hotel_id}", summary="Удаление отеля.")
+async def delete_hotel(hotel_id: int):
+    async with async_session_maker() as session:
+        hotel = await HotelsRepository(session).delete(id=hotel_id)
+        await session.commit()
+        return {"status": "OK", "data": hotel}
