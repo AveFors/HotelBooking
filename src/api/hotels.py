@@ -7,14 +7,14 @@ from fastapi import (
     Query,
 )
 
-from repositories.hotels import HotelsRepository
-from src.api.dependencies import Pagination
+from src.api.dependencies import PaginationDep
 from src.database import async_session_maker
+from src.repositories.hotels import HotelsRepository
 from src.schemas.hotels import (
     HotelCreate,
     HotelResponse,
-    HotelUpdatePUT,
     HotelUpdatePatch,
+    HotelUpdatePUT,
 )
 
 router = APIRouter(prefix="/hotels", tags=["Отели"])
@@ -22,7 +22,7 @@ router = APIRouter(prefix="/hotels", tags=["Отели"])
 
 @router.get("/", summary="Получить все отели")
 async def get_hotels(
-    pagination: Annotated[Pagination, Query()],
+    pagination: PaginationDep,
     substring: Annotated[str | None, Query(min_length=2)] = None,
 ) -> list[HotelResponse]:
     async with async_session_maker() as session:
