@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Annotated
 
 from fastapi import (
@@ -7,9 +8,7 @@ from fastapi import (
     Query,
 )
 
-from src.api.dependencies import PaginationDep
-from src.database import async_session_maker
-from src.repositories.hotels import HotelsRepository
+from src.api.dependencies import DBDep, PaginationDep
 from src.schemas.hotels import (
     HotelCreate,
     HotelResponse,
@@ -22,31 +21,35 @@ router = APIRouter(prefix="/hotels", tags=["Отели"])
 
 @router.get("/", summary="Получить все отели")
 async def get_hotels(
+    db: DBDep,
     pagination: PaginationDep,
+    date_from: date,
+    date_to: date,
     substring: Annotated[str | None, Query(min_length=2)] = None,
 ) -> list[HotelResponse]:
-    async with async_session_maker() as session:
-        return await HotelsRepository(session).get_all(
-            substring=substring,
-            limit=pagination.per_page,
-            offset=pagination.per_page * (pagination.page - 1),
-        )
+    return await db.hotels.get_filtered_by_time(
+        limit=pagination.per_page,
+        offset=pagination.per_page * (pagination.page - 1),
+        substring=substring,
+        date_from=date_from,
+        date_to=date_to,
+    )
 
 
 @router.get("/{hotel_id}", summary="Получить отель по айди")
 async def get_hotel_by_id(
+    db: DBDep,
     hotel_id: int,
 ) -> HotelResponse:
-    async with async_session_maker() as session:
-        hotel = await HotelsRepository(session).get_one_or_none(id=hotel_id)
+    hotel = await db.hotels.get_one_or_none(id=hotel_id)
 
-        if hotel is None:
-            raise HTTPException(
-                status_code=404,
-                detail="Такого отеля не существует.",
-            )
+    if hotel is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Такого отеля не существует.",
+        )
 
-        return hotel
+    return hotel
 
 
 @router.post(
@@ -55,6 +58,7 @@ async def get_hotel_by_id(
     description="<h1> Создаем отель с переданными данными. </h1>",
 )
 async def create_hotel(
+    db: DBDep,
     hotel: Annotated[
         HotelCreate,
         Body(
@@ -77,39 +81,35 @@ async def create_hotel(
         ),
     ],
 ) -> dict:
-    async with async_session_maker() as session:
-        hotel = await HotelsRepository(session).add(schema=hotel)
-        await session.commit()
-        return {"status": "OK", "data": hotel}
+    hotel = await db.hotels.add(schema=hotel)
+    await db.commit()
+    return {"status": "OK", "data": hotel}
 
 
 @router.put("/{hotel_id}", summary="Изменение отеля(PUT).")
-async def update_put_hotel(hotel_id: int, hotel: HotelUpdatePUT) -> dict:
-    async with async_session_maker() as session:
-        hotel = await HotelsRepository(session).edit(
-            schema=hotel,
-            id=hotel_id,
-        )
-        await session.commit()
-        return {"status": "OK", "data": hotel}
+async def update_put_hotel(db: DBDep, hotel_id: int, hotel: HotelUpdatePUT) -> dict:
+    hotel = await db.hotels.edit(
+        schema=hotel,
+        id=hotel_id,
+    )
+    await db.commit()
+    return {"status": "OK", "data": hotel}
 
 
 @router.patch("/{hotel_id}", summary="Изменения отеля(PATCH)")
-async def update_patch_hotel(hotel_id: int, hotel: HotelUpdatePatch) -> dict:
-    async with async_session_maker() as session:
-        hotel = await HotelsRepository(session).edit(
-            schema=hotel,
-            id=hotel_id,
-            exclude_none=True,
-            exclude_unset=True,
-        )
-        await session.commit()
-        return {"status": "OK", "data": hotel}
+async def update_patch_hotel(db: DBDep, hotel_id: int, hotel: HotelUpdatePatch) -> dict:
+    hotel = await db.hotels.edit(
+        schema=hotel,
+        id=hotel_id,
+        exclude_none=True,
+        exclude_unset=True,
+    )
+    await db.commit()
+    return {"status": "OK", "data": hotel}
 
 
 @router.delete("/{hotel_id}", summary="Удаление отеля.")
-async def delete_hotel(hotel_id: int):
-    async with async_session_maker() as session:
-        hotel = await HotelsRepository(session).delete(id=hotel_id)
-        await session.commit()
-        return {"status": "OK", "data": hotel}
+async def delete_hotel(db: DBDep, hotel_id: int):
+    hotel = await db.hotels.delete(id=hotel_id)
+    await db.commit()
+    return {"status": "OK", "data": hotel}

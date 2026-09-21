@@ -11,13 +11,29 @@ class BaseRepository:
     def __init__(self, session):
         self.session = session
 
-    async def get_all(self):
-        query = select(self.model)
+    async def get_all_by_pagination(
+        self,
+        limit: int | None,
+        offset: int | None,
+        *filter,
+        **filter_by,
+    ):
+        query = (
+            select(self.model)
+            .filter(*filter)
+            .filter_by(**filter_by)
+            .order_by(self.model.id)
+            .limit(limit)
+            .offset(offset)
+        )
         result = await self.session.execute(query)
         return [
             self.schema.model_validate(orm, from_attributes=True)
             for orm in result.scalars().all()
         ]
+
+    async def get_all(self, *filter, **filter_by):
+        return await self.get_all_by_pagination(None, None, *filter, **filter_by)
 
     async def get_one_or_none(self, **filter_by):
         query = select(self.model).filter_by(**filter_by)
