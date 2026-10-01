@@ -3,6 +3,8 @@ from datetime import date
 
 from fastapi import APIRouter, HTTPException, Query
 
+from src.models.facilities import RoomsFacilitiesOrm
+from src.schemas.facilities import RoomFacilityCreate
 from src.api.dependencies import DBDep, PaginationDep
 from src.schemas.rooms import RoomAdd, RoomCreate, RoomUpdatePatch, RoomUpdatePUT
 
@@ -67,8 +69,15 @@ async def create_hotel_room(
     hotel_id: int,
     room: RoomCreate,
 ):
-    room = RoomAdd(hotel_id=hotel_id, **room.model_dump())
-    created_room = await db.rooms.add(schema=room)
+    new_room = RoomAdd(hotel_id=hotel_id, **room.model_dump())
+    created_room = await db.rooms.add(schema=new_room)
+
+    rooms_facilities = [
+        RoomFacilityCreate(room_id=created_room.id, facility_id=f_id)
+        for f_id in (room.facility_ids or [])
+    ]
+
+    await db.room_facilities.add_bulk(rooms_facilities)
     await db.commit()
     return {"status": "OK", "data": created_room}
 
@@ -84,8 +93,30 @@ async def update_hotel_room_put(
         room,
         hotel_id=hotel_id,
         id=room_id,
+        exclude={"facility_ids"},
     )
+
+    links = await db.room_facilities.get_all(room_id=room_id)
+    old_ids = {link.facility_id for link in links}
+    new_ids = set(room.facility_ids)
+
+    to_delete = old_ids - new_ids
+    to_add = new_ids - old_ids
+
+    if to_delete:
+        await db.room_facilities.delete_bulk(
+            RoomsFacilitiesOrm.facility_id.in_(to_delete),
+            room_id=room_id,
+        )
+
+    if to_add:
+        rooms_facilities_to_add = [
+            RoomFacilityCreate(room_id=room_id, facility_id=f_id) for f_id in to_add
+        ]
+        await db.room_facilities.add_bulk(rooms_facilities_to_add)
+
     await db.commit()
+    update_room.facility_ids = sorted(new_ids)
     return {"status": "OK", "data": update_room}
 
 
@@ -96,13 +127,51 @@ async def update_hotel_room_patch(
     room_id: int,
     room: RoomUpdatePatch,
 ):
-    update_room = await db.rooms.edit(
-        room,
-        hotel_id=hotel_id,
-        id=room_id,
+    values = room.model_dump(
         exclude_unset=True,
+        exclude={"facility_ids"},
     )
+    if values:
+        update_room = await db.rooms.edit(
+            room,
+            hotel_id=hotel_id,
+            id=room_id,
+            exclude_unset=True,
+            exclude={"facility_ids"},
+        )
+    else:
+        update_room = await db.rooms.get_one_or_none(
+            id=room_id,
+            hotel_id=hotel_id,
+        )
+        if update_room is None:
+            raise HTTPException(status_code=404, detail="Комната не найдена")
+
+    links = await db.room_facilities.get_all(room_id=room_id)
+
+    old_ids = {link.facility_id for link in links}
+
+    if room.facility_ids is not None:
+        new_ids = set(room.facility_ids)
+        to_delete = old_ids - new_ids
+        to_add = new_ids - old_ids
+
+        if to_delete:
+            await db.room_facilities.delete_bulk(
+                RoomsFacilitiesOrm.facility_id.in_(to_delete),
+                room_id=room_id,
+            )
+
+        if to_add:
+            rooms_facilities_to_add = [
+                RoomFacilityCreate(room_id=room_id, facility_id=f_id) for f_id in to_add
+            ]
+            await db.room_facilities.add_bulk(rooms_facilities_to_add)
+
     await db.commit()
+    update_room.facility_ids = sorted(
+        new_ids if room.facility_ids is not None else old_ids
+    )
     return {"status": "OK", "data": update_room}
 
 

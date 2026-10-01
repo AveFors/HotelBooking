@@ -6,18 +6,24 @@ class RoomBase(BaseModel):
     description: str | None = None
     price: int
     quantity: int
+    facility_ids: list[int] | None = None
 
 
 class RoomCreate(RoomBase):
     pass
 
 
-class RoomAdd(RoomCreate):
+class RoomAdd(BaseModel):
     hotel_id: int
+    title: str
+    description: str | None = None
+    price: int
+    quantity: int
 
 
 class RoomUpdatePUT(RoomBase):
     description: str
+    facility_ids: list[int]
 
 
 class RoomUpdatePatch(BaseModel):
@@ -25,6 +31,7 @@ class RoomUpdatePatch(BaseModel):
     description: str | None = None
     price: int | None = None
     quantity: int | None = None
+    facility_ids: list[int] | None = None
 
 
 class RoomResponse(RoomBase):

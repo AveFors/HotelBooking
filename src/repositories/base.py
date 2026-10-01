@@ -48,16 +48,27 @@ class BaseRepository:
         result = await self.session.execute(stmt)
         return self.schema.model_validate(result.scalar_one(), from_attributes=True)
 
+    async def add_bulk(
+        self,
+        data: list[BaseModel],
+    ):
+        if data:
+            stmt = insert(self.model).values([item.model_dump() for item in data])
+            return await self.session.execute(stmt)
+        return
+
     async def edit(
         self,
         schema: BaseModel,
         exclude_unset=False,
         exclude_none=False,
+        exclude=None,
         **filter_by,
     ):
         values = schema.model_dump(
             exclude_unset=exclude_unset,
             exclude_none=exclude_none,
+            exclude=exclude,
         )
         if not values:
             raise HTTPException(
@@ -91,7 +102,7 @@ class BaseRepository:
         stmt = delete(self.model).filter_by(**filter_by).returning(self.model)
         result = await self.session.execute(stmt)
         try:
-            hotel = result.scalar_one()
+            model = result.scalar_one()
         except MultipleResultsFound as exc:
             await self.session.rollback()
             raise HTTPException(
@@ -104,4 +115,8 @@ class BaseRepository:
                 status_code=404, detail="Объектов для удаления не нашлось."
             ) from exc
         else:
-            return self.schema.model_validate(hotel, from_attributes=True)
+            return self.schema.model_validate(model, from_attributes=True)
+
+    async def delete_bulk(self, *filters, **filter_by):
+        stmt = delete(self.model).filter(*filters).filter_by(**filter_by)
+        return await self.session.execute(stmt)
