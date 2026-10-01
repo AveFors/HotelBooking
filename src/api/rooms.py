@@ -53,10 +53,13 @@ async def get_hotel_room_by_id(
 async def get_rooms(
     hotel_id: int,
     db: DBDep,
+    pagination: PaginationDep,
     date_to: date,
     date_from: date,
 ):
     return await db.rooms.get_filtered_by_time(
+        limit=pagination.per_page,
+        offset=pagination.per_page * (pagination.page - 1),
         hotel_id=hotel_id,
         date_to=date_to,
         date_from=date_from,
@@ -96,27 +99,13 @@ async def update_hotel_room_put(
         exclude={"facility_ids"},
     )
 
-    links = await db.room_facilities.get_all(room_id=room_id)
-    old_ids = {link.facility_id for link in links}
-    new_ids = set(room.facility_ids)
-
-    to_delete = old_ids - new_ids
-    to_add = new_ids - old_ids
-
-    if to_delete:
-        await db.room_facilities.delete_bulk(
-            RoomsFacilitiesOrm.facility_id.in_(to_delete),
-            room_id=room_id,
-        )
-
-    if to_add:
-        rooms_facilities_to_add = [
-            RoomFacilityCreate(room_id=room_id, facility_id=f_id) for f_id in to_add
-        ]
-        await db.room_facilities.add_bulk(rooms_facilities_to_add)
+    result = await db.room_facilities.set_rooms_facilities(
+        room_id=room_id,
+        facility_ids=room.facility_ids,
+    )
 
     await db.commit()
-    update_room.facility_ids = sorted(new_ids)
+    update_room.facility_ids = sorted(result["new_ids"])
     return {"status": "OK", "data": update_room}
 
 
@@ -145,33 +134,23 @@ async def update_hotel_room_patch(
             hotel_id=hotel_id,
         )
         if update_room is None:
-            raise HTTPException(status_code=404, detail="Комната не найдена")
-
-    links = await db.room_facilities.get_all(room_id=room_id)
-
-    old_ids = {link.facility_id for link in links}
-
-    if room.facility_ids is not None:
-        new_ids = set(room.facility_ids)
-        to_delete = old_ids - new_ids
-        to_add = new_ids - old_ids
-
-        if to_delete:
-            await db.room_facilities.delete_bulk(
-                RoomsFacilitiesOrm.facility_id.in_(to_delete),
-                room_id=room_id,
+            raise HTTPException(
+                status_code=404,
+                detail="Комната не найдена",
             )
 
-        if to_add:
-            rooms_facilities_to_add = [
-                RoomFacilityCreate(room_id=room_id, facility_id=f_id) for f_id in to_add
-            ]
-            await db.room_facilities.add_bulk(rooms_facilities_to_add)
+    if room.facility_ids is not None:
+        result = await db.room_facilities.set_rooms_facilities(
+            room_id=room_id,
+            facility_ids=room.facility_ids,
+        )
+        response_ids = result["new_ids"]
+    else:
+        links = await db.room_facilities.get_all(room_id=room_id)
+        response_ids = {link.facility_id for link in links}
 
     await db.commit()
-    update_room.facility_ids = sorted(
-        new_ids if room.facility_ids is not None else old_ids
-    )
+    update_room.facility_ids = sorted(response_ids)
     return {"status": "OK", "data": update_room}
 
 
