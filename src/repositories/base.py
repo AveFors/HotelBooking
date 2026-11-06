@@ -3,10 +3,13 @@ from pydantic import BaseModel
 from sqlalchemy import delete, insert, select, update
 from sqlalchemy.exc import MultipleResultsFound, NoResultFound
 
+from src.database import Base
+from src.repositories.mappers.base import DataMapper
+
 
 class BaseRepository:
-    model = None
-    schema = None
+    model: Base = None
+    mapper: DataMapper = None
 
     def __init__(self, session):
         self.session = session
@@ -27,10 +30,7 @@ class BaseRepository:
             .offset(offset)
         )
         result = await self.session.execute(query)
-        return [
-            self.schema.model_validate(orm, from_attributes=True)
-            for orm in result.scalars().all()
-        ]
+        return [self.mapper.map_to_domain_entity(orm) for orm in result.scalars().all()]
 
     async def get_all(self, *filter, **filter_by):
         return await self.get_all_by_pagination(None, None, *filter, **filter_by)
@@ -41,12 +41,12 @@ class BaseRepository:
         orm = result.scalar_one_or_none()
         if orm is None:
             return None
-        return self.schema.model_validate(orm, from_attributes=True)
+        return self.mapper.map_to_domain_entity(orm)
 
     async def add(self, schema: BaseModel):
         stmt = insert(self.model).values(**schema.model_dump()).returning(self.model)
         result = await self.session.execute(stmt)
-        return self.schema.model_validate(result.scalar_one(), from_attributes=True)
+        return self.mapper.map_to_domain_entity(result.scalar_one())
 
     async def add_bulk(
         self,
@@ -96,7 +96,7 @@ class BaseRepository:
                 detail="Объектов для редактирования не нашлось.",
             ) from exc
         else:
-            return self.schema.model_validate(model, from_attributes=True)
+            return self.mapper.map_to_domain_entity(model)
 
     async def delete(self, **filter_by):
         stmt = delete(self.model).filter_by(**filter_by).returning(self.model)
@@ -115,7 +115,7 @@ class BaseRepository:
                 status_code=404, detail="Объектов для удаления не нашлось."
             ) from exc
         else:
-            return self.schema.model_validate(model, from_attributes=True)
+            return self.mapper.map_to_domain_entity(model)
 
     async def delete_bulk(self, *filters, **filter_by):
         stmt = delete(self.model).filter(*filters).filter_by(**filter_by)

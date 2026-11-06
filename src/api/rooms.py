@@ -1,11 +1,9 @@
-from typing import Annotated
 from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException
 
-from src.models.facilities import RoomsFacilitiesOrm
-from src.schemas.facilities import RoomFacilityCreate
 from src.api.dependencies import DBDep, PaginationDep
+from src.schemas.facilities import RoomFacilityCreate
 from src.schemas.rooms import RoomAdd, RoomCreate, RoomUpdatePatch, RoomUpdatePUT
 
 router = APIRouter(prefix="/hotels/{hotel_id}/rooms", tags=["Комнаты"])
@@ -17,7 +15,7 @@ async def get_hotel_room_by_id(
     hotel_id: int,
     room_id: int,
 ):
-    room = await db.rooms.get_one_or_none(
+    room = await db.rooms.get_one_or_none_with_rels(
         hotel_id=hotel_id,
         id=room_id,
     )

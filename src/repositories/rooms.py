@@ -1,45 +1,18 @@
 from datetime import date
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 
 from src.models.bookings import BookingsOrm
 from src.models.rooms import RoomsOrm
 from src.repositories.base import BaseRepository
+from src.repositories.mappers.mappers import RoomDataMapper, RoomWithRelsDataMapper
 from src.repositories.utils import rooms_ids_for_booking
-from src.schemas.rooms import RoomResponse
 
 
 class RoomsRepository(BaseRepository):
     model = RoomsOrm
-    schema = RoomResponse
-
-    # async def get_all(
-    #     self,
-    #     substring: str,
-    #     limit: int,
-    #     offset: int,
-    #     hotel_id: int,
-    # ):
-    #     query = select(self.model).filter_by(hotel_id=hotel_id)
-
-    #     if substring:
-    #         stmt = (
-    #             query.filter(
-    #                 self.model.description.ilike(f"%{substring}%")
-    #                 | self.model.title.ilike(f"%{substring}%")
-    #             )
-    #             .order_by(self.model.id)
-    #             .limit(limit)
-    #             .offset(offset)
-    #         )
-    #     else:
-    #         stmt = query.order_by(self.model.id).limit(limit).offset(offset)
-
-    #     result = await self.session.execute(stmt)
-    #     return [
-    #         self.schema.model_validate(orm, from_attributes=True)
-    #         for orm in result.scalars().all()
-    #     ]
+    mapper = RoomDataMapper
 
     async def get_filtered_by_time(
         self,
@@ -55,8 +28,28 @@ class RoomsRepository(BaseRepository):
             date_from=date_from,
         )
 
-        return await self.get_all_by_pagination(
-            limit,
-            offset,
-            RoomsOrm.id.in_(rooms_ids_to_get),
+        query = (
+            select(self.model)
+            .options(selectinload(self.model.facilities))
+            .filter(RoomsOrm.id.in_(rooms_ids_to_get))
+            .order_by(self.model.id)
+            .limit(limit)
+            .offset(offset)
         )
+        result = await self.session.execute(query)
+        return [
+            RoomWithRelsDataMapper.map_to_domain_entity(orm)
+            for orm in result.scalars().all()
+        ]
+
+    async def get_one_or_none_with_rels(self, **filter_by):
+        query = (
+            select(self.model)
+            .options(selectinload(self.model.facilities))
+            .filter_by(**filter_by)
+        )
+        result = await self.session.execute(query)
+        orm = result.scalar_one_or_none()
+        if orm is None:
+            return None
+        return RoomWithRelsDataMapper.map_to_domain_entity(orm)

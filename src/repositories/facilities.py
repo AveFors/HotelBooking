@@ -2,21 +2,18 @@ from sqlalchemy import select
 
 from src.models.facilities import FacilitiesOrm, RoomsFacilitiesOrm
 from src.repositories.base import BaseRepository
-from src.schemas.facilities import (
-    FacilityResponse,
-    RoomFacilityCreate,
-    RoomFacilityResponse,
-)
+from src.repositories.mappers.mappers import FacilityDataMapper, RoomFacilityDataMapper
+from src.schemas.facilities import RoomFacilityCreate
 
 
 class FacilitiesRepository(BaseRepository):
     model = FacilitiesOrm
-    schema = FacilityResponse
+    mapper = FacilityDataMapper
 
 
 class RoomsFacilitiesRepository(BaseRepository):
     model = RoomsFacilitiesOrm
-    schema = RoomFacilityResponse
+    mapper = RoomFacilityDataMapper
 
     async def set_rooms_facilities(
         self,

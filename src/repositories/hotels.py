@@ -5,13 +5,13 @@ from sqlalchemy import select
 from src.models.hotels import HotelsOrm
 from src.models.rooms import RoomsOrm
 from src.repositories.base import BaseRepository
+from src.repositories.mappers.mappers import HotelDataMapper
 from src.repositories.utils import rooms_ids_for_booking
-from src.schemas.hotels import HotelResponse
 
 
 class HotelsRepository(BaseRepository):
     model = HotelsOrm
-    schema = HotelResponse
+    mapper = HotelDataMapper
 
     # async def get_all(self, substring, limit, offset):
     #     query = select(self.model)
@@ -31,7 +31,7 @@ class HotelsRepository(BaseRepository):
 
     #     result = await self.session.execute(stmt)
     #     return [
-    #         self.schema.model_validate(orm, from_attributes=True)
+    #         self.mapper.map_to_domain_entity(orm)
     #         for orm in result.scalars().all()
     #     ]
 
